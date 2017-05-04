@@ -23,53 +23,16 @@ $myDB = new Database($MYSQL_USER, $MYSQL_PASS, $MYSQL_DB);
 
 $discord = new DiscordCommandClient([
     'token'     => $apiToken,
-    'prefix'    => ';'
+    'prefix'    => 'poller'
 ]);
+
 
 /**
- * Command listPolls
- *
- * @param $message
- * @return  string
+ * Include commands
  */
 
-$discord->registerCommand('listPolls', function($message) {
-    $list = array();
+require __DIR__ . '/Commands.php';
 
-    foreach ($GLOBALS['myDB']->getPolls() as $poll) {
-        array_push($list, $poll['name']);
-    }
-
-
-    return implode(', ', $list);
-}, [
-    'description' => 'Get list of polls',
-]);
-
-
-$discord->registerCommand('vote', function($message, $params) {
-    if(!isset($params[0]) || !isset($params[1]))
-    {
-        return 'Err: Not enough params. Usage: vote {poll name} {your vote}';
-    }
-
-    if($GLOBALS['myDB']->vote($message->author->username, $params[0], $params[1])) {
-        return 'Vote successful';
-    }
-
-    return 'Error, vote not casted :(';
-});
-
-$discord->registerCommand('stats', function($message, $params) {
-    if (!isset($params[0]))
-        return 'Err: Not enough parameters. Usage: stats {pollName} [Filter by option]';
-
-    if (isset($params[1])) {
-        return 'Status for ' . $params[0] . ': ' . $GLOBALS['myDB']->getPollVotes($params[0], $params[1]);
-    }
-
-    return 'Status for ' . $params[0] . ': ' . $GLOBALS['myDB']->getPollVotes($params[0]);
-});
 
 /**
  * Run the bot
