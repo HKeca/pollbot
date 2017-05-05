@@ -1,6 +1,6 @@
 <?php
 /**
- * Created by PhpStorm.
+ * Commands.
  * User: hkeca
  * Date: 5/4/17
  * Time: 11:59 AM
@@ -12,7 +12,6 @@
  * @param $message
  * @return  string
  */
-
 $discord->registerCommand('listpolls', function($message, $params) {
 
     $list = array();
@@ -22,14 +21,14 @@ $discord->registerCommand('listpolls', function($message, $params) {
             array_push($list, $poll['name']);
         }
 
-        return implode(', ', $list);
+        return $GLOBALS['chart']->createChart('Poll list', $list);
     }
 
     foreach ($GLOBALS['myDB']->getPolls() as $poll) {
         array_push($list, $poll['name'] . ':   ' . $poll['creator']);
     }
 
-    return implode(', ', $list);
+    return $GLOBALS['chart']->createChart('Poll list', $list);
 }, [
     'description' => 'Get list of polls',
     'usage'       => 'listPolls [full]',
@@ -60,6 +59,8 @@ $discord->registerCommand('vote', function($message, $params) {
     'usage'       => 'vote {poll name} {your vote}',
 ]);
 
+
+
 /**
  *  Command stats
  *
@@ -70,30 +71,47 @@ $discord->registerCommand('vote', function($message, $params) {
  */
 $discord->registerCommand('stats', function($message, $params) {
     if (!isset($params[0]))
-        return 'Error: Not enough parameters. Usage: stats {pollName} [Filter by option]';
+        return 'Error: Not enough parameters. Usage: stats {pollName}';
 
-    if (isset($params[1])) {
-        return 'Status for ' . $params[0] . ': ' . $GLOBALS['myDB']->getPollVotes($params[0], $params[1]);
-    }
+    $votes = $GLOBALS['myDB']->getAllVotes($params[0], $message->author->username);
+    $chart = $GLOBALS['chart']->createChart('Poll Stats for ' . $params[0], $votes);
 
-    return 'Status for ' . $params[0] . ': ' . $GLOBALS['myDB']->getPollVotes($params[0]);
+    return $chart;
+
 }, [
     'description' => 'Get the amount of votes from a poll',
     'usage'       => 'stats {poll name} [Filter option]',
 ]);
 
+
+/**
+ * Make command
+ *
+ * @param $message
+ * @param $params
+ *
+ * @return string
+ */
 $discord->registerCommand('make', function($message, $params) {
     if (!isset($params[0]) || !isset($params[1]))
         return 'Error: Not enough parameters. Usage: make {poll name} {poll options}';
 
-    if (!$GLOBALS['myDB']->makePoll($message->author->username, $params[0], $params[1])) {
-        return 'Error: Poll not created :(';
+    $poll = $GLOBALS['myDB']->makePoll($message->author->username, $params[0], $params[1]);
+
+    if ($poll == 1) {
+        return 'Error: Poll not created, poll already exists';
+    }
+    if ($poll == 2) {
+        return 'Error: Poll not created, poll database error';
     }
 
     return 'Created poll ' . $params[0] .' successfully';
 });
 
 
+/**
+ * Test chart command
+ */
 $discord->registerCommand('chart', function($message){
     $stuff = array('Hello', 'World');
     $chart = $GLOBALS['chart']->createChart('Time', $stuff);

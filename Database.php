@@ -1,6 +1,6 @@
 <?php
 /**
- * Created by PhpStorm.
+ * Main database logic.
  * User: hkeca
  * Date: 5/3/17
  * Time: 4:38 PM
@@ -10,10 +10,12 @@ class Database
 {
     private $db;
 
-    public function __construct($MYSQL_USER, $MYSQL_PASS, $MYSQL_DB, $MYSQL_CHARSET = 'utf8')
+    public function __construct($MYSQL_HOST = '127.0.0.1', $MYSQL_USER, $MYSQL_PASS, $MYSQL_DB, $MYSQL_CHARSET = 'utf8')
     {
+        $dsn = 'mysql:host=' . $MYSQL_HOST . ';dbname=' . $MYSQL_DB . ';charset=' . $MYSQL_CHARSET;
+
         try {
-            $this->db = new PDO('mysql:host=127.0.0.1;dbname=' . $MYSQL_DB . ';charset=' . $MYSQL_CHARSET, $MYSQL_USER, $MYSQL_PASS);
+            $this->db = new PDO($dsn, $MYSQL_USER, $MYSQL_PASS);
             $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->db->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
         } catch (Exception $e) {
@@ -81,20 +83,53 @@ class Database
      * @param $username
      * @param $pollName
      * @param $pollOptions
-     * @return bool
+     * @return bool|int
      */
     public function makePoll($username, $pollName, $pollOptions)
     {
-        if ($this->pollExists($pollName))
-            return false;
+        if ($this->pollExists($pollName, $username))
+            return 1;
 
         if (!$this->createPoll($username, $pollName, $pollOptions))
-            return false;
+            return 2;
 
         return true;
     }
 
+    /**
+     * Get all votes for a poll
+     *
+     * @param $pollName
+     * @param $username
+     * @return array
+     */
+    public function getAllVotes($pollName, $username)
+    {
+        $pollId = $this->getPollFromName($pollName, $username);
+        $options = $this->getPollOptions($pollName, $username);
+        $votes = $this->getVotes($pollId);
 
+        $voteCount = count($votes);
+
+        $allVotes = array();
+
+        foreach ($options as $key => $opt) {
+            $val = json_decode($opt);
+
+            if (!isset(${$val->name}))
+                ${$val->name} = 0;
+
+            for ($i = 0; $i < $voteCount; $i++) {
+                if ($votes[$i] == $val->name) {
+                    ${$val->name} += 1;
+                }
+            }
+
+            array_push($allVotes, 'Option ' . $val->value . ' has ' . ${$val->name} . ' vote(s)');
+        }
+
+        return $allVotes;
+    }
 
     /**
      * Helper functions
@@ -108,7 +143,7 @@ class Database
      *
      * @return Boolean
      */
-    protected function hasVoted($username, $pollName)
+    private function hasVoted($username, $pollName)
     {
         $rowCount = 0;
 
@@ -136,42 +171,62 @@ class Database
     /**
      * Get amount of votes a poll has
      *
-     * @param $pollName
-     * @param null $pollOption
-     * @return bool|int
+     * @param $pollId
+     * @return array
      */
-
-    private function getVotes($pollName, $pollOption = null)
+    private function getVotes($pollId)
     {
         // if no pollName is give
-        if(!isset($pollName)) {
+        if(!isset($pollId)) {
             return false;
         }
 
-        // If you want a certain poll option
-        if (isset($pollOption)) {
-            try {
-                $stmt = $this->db->prepare('SELECT * FROM votes WHERE vote=? AND pollName=?');
-                $stmt->execute(array($pollOption, $pollName));
-
-                return $stmt->rowCount();
-            } catch (PDOException $e) {
-                echo 'PDO -> FATAL ERROR: ' . $e, PHP_EOL;
-                return false;
-            }
-        }
-
-        try {
-            $stmt = $this->db->prepare('SELECT * FROM votes WHERE pollName=?');
-            $stmt->execute(array($pollName));
-            // Return the amount of rows the sql statement returns
-            return $stmt->rowCount();
+        // All votes
+        $votes = array();
+        // Get votes
+        Try {
+            $stmt = $this->db->prepare('SELECT * FROM votes WHERE pollId=?');
+            $stmt->execute(array($pollId));
+            $votes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            echo 'PDO -> FATAL ERROR: ' . $e, PHP_EOL;
             return false;
         }
 
-        return false;
+        if (empty($votes))
+            return false;
+
+        $data = array();
+
+
+        foreach ($votes as $vote) {
+            array_push($data, $vote['vote']);
+        }
+
+
+
+        /*
+        // put each vote in its array based on its option
+        foreach ($votes as $v) {
+            // if no array exists with the name of the option
+            // create it!
+            if (!isset(${$v['vote']})) {
+                ${$v['vote']} = array();
+            }
+            // add the vote to the array
+            array_push(${$v['vote']}, $v['vote']);
+        }
+
+        // Put all the votes arrays into the data array
+        foreach ($votes as $v) {
+            // if the vote option has an array
+            if (isset(${$v['vote']})) {
+                // if its not in the array add it!
+                if (!in_array(${$v['vote']}, $data))
+                    array_push($data, ${$v['vote']});
+            }
+        }*/
+
+        return $data;
     }
 
     /**
@@ -226,16 +281,17 @@ class Database
      * Gets the poll options for specific poll
      *
      * @param $pollName
+     * @param $username
      * @return array|bool
      */
 
-    private function getPollOptions($pollName)
+    public function getPollOptions($pollName, $username)
     {
         // pollOptions from the database
         $values = array();
 
-        // If not given a poll name return false
-        if ($pollName == null)
+        // If not given a poll name/username return false
+        if ($pollName == null || $username == null)
             return false;
 
         try {
@@ -273,20 +329,20 @@ class Database
      * Check if a poll exists
      *
      * @param $pollName
+     * @param $username
      * @return bool
      */
-    private function pollExists($pollName)
+    private function pollExists($pollName, $username)
     {
         // amount of polls exist with pollName
         $amount = 0;
 
         // find out.
         try {
-            $stmt = $this->db->prepare('SELECT * FROM polls WHERE name=?');
-            $stmt->execute(array($pollName));
+            $stmt = $this->db->prepare('SELECT * FROM polls WHERE name=? AND creator=?');
+            $stmt->execute(array($pollName, $username));
             $amount = $stmt->rowCount();
         } catch(PDOException $e) {
-            echo 'PDO -> FATAL ERROR: ' . $e, PHP_EOL;
             return false;
         }
 
@@ -332,21 +388,54 @@ class Database
      */
     private function parseOptions($pollOptions)
     {
+        // if no options then return false
         if (empty($pollOptions))
             return false;
-
+        // get options and turn into an array
         $opts = explode(';', $pollOptions);
 
+        // For each option split the option into another array
         $jOptions = array();
         foreach($opts as $o) {
             $stuff = explode(':', $o);
-            $tmp = array($stuff[0] => array("name" => $stuff[0], "value" => $stuff[1]));
+            $tmp = array('name' => $stuff[0], "value" => $stuff[1]);
             $a = json_encode($tmp);
 
             array_push($jOptions, $a);
         }
 
+        // return the options
         return json_encode($jOptions);
+    }
+
+    /**
+     * Get the poll id from the poll name, and the creator's name
+     *
+     * @param $pollName
+     * @param $creator
+     *
+     * @return bool|int
+     */
+    private function getPollFromName($pollName, $creator)
+    {
+        if ($pollName == null || $creator == null)
+            return false;
+
+        $pollData = null;
+
+        try {
+            $stmt = $this->db->prepare('SELECT id FROM polls WHERE name=? AND creator=?');
+            $stmt->execute(array($pollName, $creator));
+            $pollData = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            echo 'PDO -> FATAL ERROR: ' . $e, PHP_EOL;
+            return false;
+        }
+
+        if (empty($pollData))
+            return false;
+
+        return $pollData['id'];
     }
 
 }

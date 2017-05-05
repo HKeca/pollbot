@@ -24,7 +24,7 @@ class Chart
         $chart .= "\n\n";
 
         foreach ($items as $item) {
-            $chart .= "    " . $item . "\n";
+            $chart .= "    " . $item . "\n\n";
         }
 
         return $chart;

@@ -14,8 +14,9 @@ include __DIR__ . '/Chart.php';
 
 use Discord\DiscordCommandClient;
 
-$myDB = new Database($MYSQL_USER, $MYSQL_PASS, $MYSQL_DB);
+$myDB = new Database($MYSQL_HOST, $MYSQL_USER, $MYSQL_PASS, $MYSQL_DB);
 $chart = new Chart();
+
 /**
  * Init discord bot
  *
@@ -26,7 +27,6 @@ $discord = new DiscordCommandClient([
     'token'     => $apiToken,
     'prefix'    => '--'
 ]);
-
 
 /**
  * Include commands
