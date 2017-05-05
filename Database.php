@@ -56,7 +56,14 @@ class Database
         return $this->getVotes($pollName, $pollOption);
     }
 
-
+    /**
+     * Cast a vote
+     *
+     * @param $username
+     * @param $pollName
+     * @param $option
+     * @return bool
+     */
     public function vote($username, $pollName, $option)
     {
         if (!isset($username) || !isset($pollName) || !isset($option))
@@ -67,6 +74,26 @@ class Database
 
         return $this->castVote($username, $pollName, $option);
     }
+
+    /**
+     * Make a poll
+     *
+     * @param $username
+     * @param $pollName
+     * @param $pollOptions
+     * @return bool
+     */
+    public function makePoll($username, $pollName, $pollOptions)
+    {
+        if ($this->pollExists($pollName))
+            return false;
+
+        if (!$this->createPoll($username, $pollName, $pollOptions))
+            return false;
+
+        return true;
+    }
+
 
 
     /**
@@ -157,6 +184,7 @@ class Database
      */
     private function castVote($username, $pollName, $option)
     {
+        // pollOptions array
         $opts = array();
 
         // No username
@@ -164,20 +192,27 @@ class Database
             return false;
         // Get available options
         $opts = $this->getPollOptions($pollName);
-        if (empty($opts))
-            return false;
         // Check if given option is valid
+        // for each option if it equals what is supplied it will increase
+        // $amount, if $amount is greater than 0 then its a valid command
         $amount = 0;
         foreach ($opts as $o) {
-            if ($o == $option)
+            // $o = {'name': '', 'value': ''}
+            $tmp = json_decode($o, true);
+            // if the users' option equals one of the options
+            // inc the $amount value
+            if ($tmp['name'] == $option)
                 $amount += 1;
         }
+        // if no options matched return false
         if ($amount < 1)
             return false;
 
 
         try {
+            // Insert statement
             $stmt = $this->db->prepare('INSERT INTO votes (casterName, pollName, vote) VALUES (?,?,?)');
+            // Execute with the caster's username, the poll name, and the option
             $stmt->execute(array($username, $pollName, $option));
         } catch (PDOException $e) {
             echo 'PDO -> FATAL ERROR: ' . $e, PHP_EOL;
@@ -194,16 +229,21 @@ class Database
      * @return array|bool
      */
 
-    public function getPollOptions($pollName)
+    private function getPollOptions($pollName)
     {
+        // pollOptions from the database
         $values = array();
 
+        // If not given a poll name return false
         if ($pollName == null)
             return false;
 
         try {
+            // Select statement
             $stmt = $this->db->prepare('SELECT options FROM polls WHERE name=?');
+            // Execute with the poll name
             $stmt->execute(array($pollName));
+            // get the values from the query
             $values = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         } catch (PDOException $e) {
@@ -211,18 +251,102 @@ class Database
             return false;
         }
 
+        // if no values return false
         if (empty($values))
             return false;
 
+        // turn the json from the database to an array of options
         $jValues = json_decode($values[0]['options'], true);
 
+        // poll options array
         $options = array();
         foreach ($jValues as $param)
         {
-            array_push($options, $param['name']);
+            array_push($options, $param);
         }
 
+        // return the poll options
         return $options;
+    }
+
+    /**
+     * Check if a poll exists
+     *
+     * @param $pollName
+     * @return bool
+     */
+    private function pollExists($pollName)
+    {
+        // amount of polls exist with pollName
+        $amount = 0;
+
+        // find out.
+        try {
+            $stmt = $this->db->prepare('SELECT * FROM polls WHERE name=?');
+            $stmt->execute(array($pollName));
+            $amount = $stmt->rowCount();
+        } catch(PDOException $e) {
+            echo 'PDO -> FATAL ERROR: ' . $e, PHP_EOL;
+            return false;
+        }
+
+        if ($amount > 0)
+            return true;
+
+        return false;
+    }
+
+    /**
+     * Create poll in database
+     *
+     * @param $username
+     * @param $pollName
+     * @param $pollOptions
+     * @return bool
+     */
+    private function createPoll($username, $pollName, $pollOptions)
+    {
+
+        $options = $this->parseOptions($pollOptions);
+
+        try {
+            $stmt = $this->db->prepare('INSERT INTO polls (name, options, creator, active) VALUES (?,?,?,?)');
+            $stmt->execute(array($pollName, $options, $username, '1'));
+            return true;
+        } catch (PDOException $e) {
+            echo 'PDO -> FATAL ERROR: ' . $e, PHP_EOL;
+            return false;
+        }
+
+        return false;
+    }
+
+    /**
+     * parses a string provided by the user
+     *
+     * required delimiters ':' ';'
+     * ex test:some;a:b;
+     *
+     * @param $pollOptions
+     * @return bool|string
+     */
+    private function parseOptions($pollOptions)
+    {
+        if (empty($pollOptions))
+            return false;
+
+        $opts = explode(';', $pollOptions);
+
+        $jOptions = array();
+        foreach($opts as $o) {
+            $stuff = explode(':', $o);
+            $tmp = array($stuff[0] => array("name" => $stuff[0], "value" => $stuff[1]));
+            $a = json_encode($tmp);
+
+            array_push($jOptions, $a);
+        }
+
+        return json_encode($jOptions);
     }
 
 }

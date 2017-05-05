@@ -10,11 +10,12 @@ include __DIR__ . '/vendor/autoload.php';
 
 include __DIR__ . '/config.php';
 include __DIR__ . '/Database.php';
+include __DIR__ . '/Chart.php';
 
 use Discord\DiscordCommandClient;
 
 $myDB = new Database($MYSQL_USER, $MYSQL_PASS, $MYSQL_DB);
-
+$chart = new Chart();
 /**
  * Init discord bot
  *
@@ -23,7 +24,7 @@ $myDB = new Database($MYSQL_USER, $MYSQL_PASS, $MYSQL_DB);
 
 $discord = new DiscordCommandClient([
     'token'     => $apiToken,
-    'prefix'    => 'poller'
+    'prefix'    => '--'
 ]);
 
 
@@ -32,7 +33,6 @@ $discord = new DiscordCommandClient([
  */
 
 require __DIR__ . '/Commands.php';
-
 
 /**
  * Run the bot
